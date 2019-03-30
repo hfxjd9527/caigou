@@ -1,0 +1,41 @@
+# -*- coding: utf-8 -*-
+import scrapy
+from scrapy_splash import SplashRequest
+from caigou.items import CaigouItem
+
+# 模拟点击采用js的方式
+script = """
+function main(splash, args)
+  splash.images_enabled = false  
+  assert(splash:go(args.url))
+  assert(splash:wait(1))
+  js = string.format("document.querySelector('div.paginationjs-pages > ul > li.paginationjs-next.J-paginationjs-next a').click();", args.page)
+  splash:runjs(js)
+  assert(splash:wait(5))
+  return splash:html()
+end
+"""
+
+
+class ZfcaigouSpider(scrapy.Spider):
+    name = 'zfcaigou'
+    allowed_domains = ['www.zjzfcg.gov.cn']
+    base_url = 'http://www.zjzfcg.gov.cn/purchaseNotice/index.html?categoryId=3001'
+
+    def start_requests(self):
+        for page in range(1, 5):
+            url = self.base_url
+            yield SplashRequest(url, callback=self.parse, endpoint='execute',
+                                args={'lua_source': script, 'page': page, 'wait': 10})
+
+    def parse(self, response):
+        # print(response.body.decode("utf-8"))
+        infodata = response.css(".items p")
+        for infoline in infodata:
+            caigouitem = CaigouItem()
+            caigouitem['city'] = infoline.css(".warning::text").extract()[0].replace("[", "").replace("·", "").strip()
+            caigouitem['issuescate'] = infoline.css(".warning .limit::text").extract()[0]
+            caigouitem['title'] = infoline.css("a .underline::text").extract()[0].replace("]", "")
+            caigouitem['publish_date'] = infoline.css(".time::text").extract()[0].replace("[", "").replace("]", "")
+
+            yield caigouitem
